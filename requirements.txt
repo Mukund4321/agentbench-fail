@@ -1,0 +1,37 @@
+# Core agent framework
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-openai>=0.3.0
+
+# LLM API clients
+anthropic>=0.40.0
+openai>=1.50.0
+
+# Data analysis
+pandas>=2.2.0
+numpy>=1.26.0
+matplotlib>=3.9.0
+plotly>=5.24.0
+
+# Jupyter notebooks
+notebook>=7.0.0
+ipykernel>=6.29.0
+
+# Environment & config
+python-dotenv>=1.0.0
+
+# Utilities
+tqdm>=4.66.0
+rich>=13.0.0
+
+# Development & testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+black>=24.0.0
+ruff>=0.6.0
+mypy>=1.11.0
+
+# Optional: SQLite viewer
+datasette>=0.65.0

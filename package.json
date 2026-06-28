@@ -1,0 +1,22 @@
+{
+  "name": "agentbench-fail-trigger",
+  "version": "1.0.0",
+  "description": "Trigger.dev automation for AgentBench-Fail benchmark scheduling",
+  "private": true,
+  "scripts": {
+    "dev":    "npx trigger.dev@latest dev",
+    "deploy": "npx trigger.dev@latest deploy"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "^4.4.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "trigger": {
+    "projectRef": "agentbench-fail",
+    "triggerUrl": "https://api.trigger.dev"
+  }
+}

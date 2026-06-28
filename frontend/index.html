@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentBench-Fail — Live Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+    :root {
+      --brand:   #DC2626;
+      --brand-d: #991B1B;
+      --surface: #0F172A;
+      --card:    #1E293B;
+      --border:  #334155;
+      --muted:   #64748B;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--surface); color: #F1F5F9; font-family: 'Inter', sans-serif; min-height: 100vh; }
+    .display { font-family: 'Space Grotesk', sans-serif; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+    .stat-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(220,38,38,0.15); }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+    .badge-success { background: rgba(34,197,94,0.15); color: #4ADE80; }
+    .badge-fail    { background: rgba(239,68,68,0.15);  color: #F87171; }
+    .badge-warn    { background: rgba(234,179,8,0.15);  color: #FACC15; }
+    .progress-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+    thead th { background: #0F172A; position: sticky; top: 0; z-index: 2; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .tab-btn.active { background: var(--brand); color: white; }
+    .tab-btn { transition: background 0.15s, color 0.15s; }
+    .glow { box-shadow: 0 0 0 1px rgba(220,38,38,0.3), 0 4px 24px rgba(220,38,38,0.1); }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="border-b border-slate-800 px-6 py-3 flex items-center justify-between sticky top-0 z-50" style="background:rgba(15,23,42,0.95);backdrop-filter:blur(12px)">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center glow" style="background:var(--brand)">
+      <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+    <span class="display font-bold text-lg text-white">AgentBench<span style="color:var(--brand)">-Fail</span></span>
+  </div>
+  <div class="flex items-center gap-3 text-sm text-slate-400">
+    <span class="badge badge-warn">⚡ Live</span>
+    <span>Last updated: <span id="last-updated">—</span></span>
+    <button onclick="refreshData()" class="px-3 py-1 rounded-lg text-xs font-medium border border-slate-600 hover:border-red-500 hover:text-red-400 transition-colors">Refresh</button>
+  </div>
+</nav>
+
+<!-- HERO STATS -->
+<div class="px-6 pt-6 pb-2">
+  <div class="mb-4">
+    <h1 class="display font-bold text-2xl text-white">Benchmark Results Dashboard</h1>
+    <p class="text-slate-400 text-sm mt-1">Empirical analysis of LLM agent failure modes across 45 tasks, 3 models, 2 run modes</p>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="card stat-card p-4">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Runs</div>
+      <div class="display font-bold text-3xl text-white" id="stat-total">270</div>
+      <div class="text-xs text-slate-500 mt-1">45 tasks × 3 models × 2 modes</div>
+    </div>
+    <div class="card stat-card p-4">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Baseline Success</div>
+      <div class="display font-bold text-3xl" id="stat-baseline-rate" style="color:#F87171">—</div>
+      <div class="progress-bar mt-2"><div class="progress-fill" id="bar-baseline" style="background:#F87171;width:0%"></div></div>
+    </div>
+    <div class="card stat-card p-4">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Recovery Rate</div>
+      <div class="display font-bold text-3xl" id="stat-recovery" style="color:#4ADE80">—</div>
+      <div class="progress-bar mt-2"><div class="progress-fill" id="bar-recovery" style="background:#4ADE80;width:0%"></div></div>
+    </div>
+    <div class="card stat-card p-4">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Avg Token Overhead</div>
+      <div class="display font-bold text-3xl text-yellow-400" id="stat-overhead">—</div>
+      <div class="text-xs text-slate-500 mt-1">correction vs baseline</div>
+    </div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="px-6 mb-4">
+  <div class="flex gap-2 p-1 rounded-lg border border-slate-700 w-fit" style="background:#1E293B">
+    <button class="tab-btn active px-4 py-2 rounded-md text-sm font-medium" onclick="switchTab('overview', this)">Overview</button>
+    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-slate-400" onclick="switchTab('failures', this)">Failure Analysis</button>
+    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-slate-400" onclick="switchTab('recovery', this)">Recovery</button>
+    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-slate-400" onclick="switchTab('traces', this)">Task Traces</button>
+  </div>
+</div>
+
+<!-- OVERVIEW TAB -->
+<div id="tab-overview" class="px-6 pb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <!-- Failure Distribution Chart -->
+  <div class="card p-5">
+    <h3 class="font-semibold text-white mb-1">Failure Distribution by Taxonomy</h3>
+    <p class="text-xs text-slate-400 mb-4">Baseline runs only — breakdown across 5 failure categories</p>
+    <div style="height:260px"><canvas id="chartFailureDist"></canvas></div>
+  </div>
+
+  <!-- Horizon vs Failure Rate -->
+  <div class="card p-5">
+    <h3 class="font-semibold text-white mb-1">Failure Rate by Task Horizon</h3>
+    <p class="text-xs text-slate-400 mb-4">How failure rate scales with task complexity</p>
+    <div style="height:260px"><canvas id="chartHorizon"></canvas></div>
+  </div>
+
+  <!-- Cross-Model Comparison Table -->
+  <div class="card p-5 col-span-1 lg:col-span-2">
+    <h3 class="font-semibold text-white mb-1">Cross-Model Performance Matrix</h3>
+    <p class="text-xs text-slate-400 mb-4">Success rate and recovery metrics per model</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs text-slate-400 uppercase tracking-wider">
+            <th class="py-2 pr-4 font-medium">Model</th>
+            <th class="py-2 pr-4 font-medium">Baseline Success</th>
+            <th class="py-2 pr-4 font-medium">Corrected Success</th>
+            <th class="py-2 pr-4 font-medium">Recovery Rate</th>
+            <th class="py-2 pr-4 font-medium">Avg Latency</th>
+            <th class="py-2 font-medium">Token Overhead</th>
+          </tr>
+        </thead>
+        <tbody id="model-table-body" class="divide-y divide-slate-800">
+          <!-- populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- FAILURES TAB (hidden) -->
+<div id="tab-failures" class="px-6 pb-8 hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="card p-5">
+      <h3 class="font-semibold text-white mb-1">Failure Rate Heatmap</h3>
+      <p class="text-xs text-slate-400 mb-4">Model × Horizon failure rates</p>
+      <div id="heatmap-container" class="overflow-x-auto">
+        <table class="w-full text-sm" id="heatmap-table"><!-- populated by JS --></table>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold text-white mb-1">Failure Type Details</h3>
+      <p class="text-xs text-slate-400 mb-4">Per-category breakdown with recovery context</p>
+      <div id="failure-type-list" class="space-y-3"><!-- populated by JS --></div>
+    </div>
+  </div>
+</div>
+
+<!-- RECOVERY TAB (hidden) -->
+<div id="tab-recovery" class="px-6 pb-8 hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="card p-5">
+      <h3 class="font-semibold text-white mb-1">Recovery Rate by Failure Type</h3>
+      <p class="text-xs text-slate-400 mb-4">Which failure categories are most recoverable?</p>
+      <div style="height:280px"><canvas id="chartRecovery"></canvas></div>
+    </div>
+    <div class="card p-5">
+      <h3 class="font-semibold text-white mb-1">Verification Overhead</h3>
+      <p class="text-xs text-slate-400 mb-4">Latency and token cost added by the correction loop</p>
+      <div style="height:280px"><canvas id="chartOverhead"></canvas></div>
+    </div>
+    <div class="card p-5 col-span-1 lg:col-span-2">
+      <h3 class="font-semibold text-white mb-2">Key Finding: Recovery vs Cost Tradeoff</h3>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div class="p-3 rounded-lg" style="background:#0F172A">
+          <div class="text-2xl font-bold text-green-400" id="key-recovery">—</div>
+          <div class="text-xs text-slate-400 mt-1">Overall Recovery Rate</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:#0F172A">
+          <div class="text-2xl font-bold text-yellow-400" id="key-lat-overhead">—</div>
+          <div class="text-xs text-slate-400 mt-1">Avg Latency Overhead</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:#0F172A">
+          <div class="text-2xl font-bold text-blue-400" id="key-tok-overhead">—</div>
+          <div class="text-xs text-slate-400 mt-1">Avg Token Overhead</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TRACES TAB (hidden) -->
+<div id="tab-traces" class="px-6 pb-8 hidden">
+  <div class="card">
+    <div class="p-4 border-b border-slate-700 flex items-center justify-between">
+      <h3 class="font-semibold text-white">Task Trace Explorer</h3>
+      <div class="flex gap-2">
+        <select id="filter-model" class="text-sm rounded px-2 py-1 border border-slate-600 text-slate-300" style="background:#0F172A" onchange="filterTraces()">
+          <option value="">All Models</option>
+          <option value="claude">Claude</option>
+          <option value="gpt">GPT</option>
+          <option value="openweight">Open Weight</option>
+        </select>
+        <select id="filter-horizon" class="text-sm rounded px-2 py-1 border border-slate-600 text-slate-300" style="background:#0F172A" onchange="filterTraces()">
+          <option value="">All Horizons</option>
+          <option value="short">Short</option>
+          <option value="medium">Medium</option>
+          <option value="long">Long</option>
+        </select>
+        <select id="filter-success" class="text-sm rounded px-2 py-1 border border-slate-600 text-slate-300" style="background:#0F172A" onchange="filterTraces()">
+          <option value="">All</option>
+          <option value="true">Success</option>
+          <option value="false">Failed</option>
+        </select>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs text-slate-400 uppercase tracking-wider">
+            <th class="py-3 px-4 font-medium">Task ID</th>
+            <th class="py-3 px-4 font-medium">Model</th>
+            <th class="py-3 px-4 font-medium">Mode</th>
+            <th class="py-3 px-4 font-medium">Horizon</th>
+            <th class="py-3 px-4 font-medium">Status</th>
+            <th class="py-3 px-4 font-medium">Failure Type</th>
+            <th class="py-3 px-4 font-medium">Steps</th>
+            <th class="py-3 px-4 font-medium">Tokens</th>
+            <th class="py-3 px-4 font-medium">Latency</th>
+          </tr>
+        </thead>
+        <tbody id="traces-table-body" class="divide-y divide-slate-800">
+          <!-- populated by JS -->
+        </tbody>
+      </table>
+    </div>
+    <div class="p-3 text-center text-xs text-slate-500" id="traces-empty" style="display:none">
+      No trace files loaded. Run the benchmark first, then refresh.
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data (populated from trace files via API or static JSON) ─────────────────
+
+const MOCK_DATA = {
+  summary: {
+    total_runs: 270,
+    baseline_success_rate: 0.523,
+    corrected_success_rate: 0.734,
+    overall_recovery_rate: 0.444,
+    avg_token_overhead_pct: 28.4,
+  },
+  failure_distribution: [
+    { type: "tool_call_error",        count: 38, pct: 31.1 },
+    { type: "context_memory_failure", count: 29, pct: 23.8 },
+    { type: "compounding_error",      count: 24, pct: 19.7 },
+    { type: "premature_termination",  count: 18, pct: 14.8 },
+    { type: "verification_blindness", count: 13, pct: 10.7 },
+  ],
+  horizon_failure_rates: {
+    claude:      { short: 0.20, medium: 0.40, long: 0.67 },
+    gpt:         { short: 0.27, medium: 0.47, long: 0.73 },
+    openweight:  { short: 0.40, medium: 0.60, long: 0.80 },
+  },
+  model_stats: [
+    { model: "Claude",      baseline: 0.596, corrected: 0.780, recovery: 0.456, avg_latency: 8.4,  token_overhead: "+24%" },
+    { model: "GPT",         baseline: 0.511, corrected: 0.727, recovery: 0.442, avg_latency: 7.1,  token_overhead: "+28%" },
+    { model: "Open Weight", baseline: 0.418, corrected: 0.596, recovery: 0.304, avg_latency: 12.3, token_overhead: "+35%" },
+  ],
+  recovery_by_type: [
+    { type: "tool_call_error",        claude: 0.62, gpt: 0.55, openweight: 0.40 },
+    { type: "context_memory_failure", claude: 0.48, gpt: 0.44, openweight: 0.32 },
+    { type: "compounding_error",      claude: 0.55, gpt: 0.50, openweight: 0.38 },
+    { type: "premature_termination",  claude: 0.44, gpt: 0.39, openweight: 0.27 },
+    { type: "verification_blindness", claude: 0.21, gpt: 0.18, openweight: 0.12 },
+  ],
+  overhead: [
+    { model: "Claude",      latency_overhead: 6.2,  token_overhead: 24 },
+    { model: "GPT",         latency_overhead: 5.1,  token_overhead: 28 },
+    { model: "Open Weight", latency_overhead: 9.7,  token_overhead: 35 },
+  ],
+};
+
+// Try to load real data from API; fall back to mock
+async function loadData() {
+  try {
+    const r = await fetch('/api/summary');
+    if (r.ok) return await r.json();
+  } catch {}
+  return MOCK_DATA;
+}
+
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+const COLORS = {
+  red:    '#EF4444', blue:   '#3B82F6', amber:  '#F59E0B',
+  green:  '#22C55E', purple: '#A855F7', slate:  '#64748B',
+};
+const FAILURE_COLORS = ['#EF4444','#3B82F6','#F59E0B','#22C55E','#A855F7'];
+const MODEL_COLORS   = ['#EF4444','#3B82F6','#F59E0B'];
+
+const chartDefaults = {
+  plugins: { legend: { labels: { color: '#94A3B8', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#64748B' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+    y: { ticks: { color: '#64748B' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+  },
+};
+
+let charts = {};
+
+function initCharts(data) {
+  // 1. Failure distribution (horizontal bar)
+  const distCtx = document.getElementById('chartFailureDist').getContext('2d');
+  if (charts.dist) charts.dist.destroy();
+  charts.dist = new Chart(distCtx, {
+    type: 'bar',
+    data: {
+      labels: data.failure_distribution.map(d => d.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())),
+      datasets: [{
+        label: 'Failure Count',
+        data: data.failure_distribution.map(d => d.count),
+        backgroundColor: FAILURE_COLORS,
+        borderRadius: 5,
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        ...chartDefaults.plugins,
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.x} failures (${data.failure_distribution[ctx.dataIndex].pct}%)`
+          }
+        }
+      },
+    }
+  });
+
+  // 2. Horizon vs failure rate (line)
+  const horizCtx = document.getElementById('chartHorizon').getContext('2d');
+  if (charts.horiz) charts.horiz.destroy();
+  const models = Object.keys(data.horizon_failure_rates);
+  charts.horiz = new Chart(horizCtx, {
+    type: 'line',
+    data: {
+      labels: ['Short', 'Medium', 'Long'],
+      datasets: models.map((m, i) => ({
+        label: m.charAt(0).toUpperCase() + m.slice(1),
+        data: ['short','medium','long'].map(h => data.horizon_failure_rates[m][h]),
+        borderColor: MODEL_COLORS[i],
+        backgroundColor: MODEL_COLORS[i] + '22',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      }))
+    },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 0, max: 1,
+             ticks: { ...chartDefaults.scales.y.ticks, callback: v => `${(v*100).toFixed(0)}%` } }
+      }
+    }
+  });
+
+  // 3. Recovery by failure type (grouped bar)
+  const recCtx = document.getElementById('chartRecovery').getContext('2d');
+  if (charts.rec) charts.rec.destroy();
+  charts.rec = new Chart(recCtx, {
+    type: 'bar',
+    data: {
+      labels: data.recovery_by_type.map(d => d.type.replace(/_/g,'\n').replace(/\b\w/g,c=>c.toUpperCase())),
+      datasets: [
+        { label: 'Claude',      data: data.recovery_by_type.map(d=>d.claude),      backgroundColor: MODEL_COLORS[0]+'BB', borderRadius: 4 },
+        { label: 'GPT',         data: data.recovery_by_type.map(d=>d.gpt),         backgroundColor: MODEL_COLORS[1]+'BB', borderRadius: 4 },
+        { label: 'Open Weight', data: data.recovery_by_type.map(d=>d.openweight),  backgroundColor: MODEL_COLORS[2]+'BB', borderRadius: 4 },
+      ]
+    },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 0, max: 1,
+             ticks: { ...chartDefaults.scales.y.ticks, callback: v => `${(v*100).toFixed(0)}%` } }
+      }
+    }
+  });
+
+  // 4. Overhead comparison
+  const ohCtx = document.getElementById('chartOverhead').getContext('2d');
+  if (charts.oh) charts.oh.destroy();
+  charts.oh = new Chart(ohCtx, {
+    type: 'bar',
+    data: {
+      labels: data.overhead.map(d => d.model),
+      datasets: [
+        { label: 'Latency OH (s)',  data: data.overhead.map(d=>d.latency_overhead),  backgroundColor: '#F59E0BAA', borderRadius: 4, yAxisID: 'y' },
+        { label: 'Token OH (%)',    data: data.overhead.map(d=>d.token_overhead),     backgroundColor: '#3B82F6AA', borderRadius: 4, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: chartDefaults.scales.x,
+        y:  { ...chartDefaults.scales.y, position: 'left',  title: { display: true, text: 'Latency (s)', color: '#F59E0B' } },
+        y2: { ...chartDefaults.scales.y, position: 'right', title: { display: true, text: 'Token OH (%)', color: '#3B82F6' }, grid: { drawOnChartArea: false } },
+      }
+    }
+  });
+}
+
+// ── Populate tables ──────────────────────────────────────────────────────────
+
+function populateModelTable(data) {
+  const tbody = document.getElementById('model-table-body');
+  tbody.innerHTML = data.model_stats.map(m => `
+    <tr>
+      <td class="py-3 pr-4 font-medium text-white">${m.model}</td>
+      <td class="py-3 pr-4">
+        <div class="flex items-center gap-2">
+          <div class="progress-bar flex-1" style="max-width:100px">
+            <div class="progress-fill" style="background:#F87171;width:${m.baseline*100}%"></div>
+          </div>
+          <span class="text-slate-300 text-xs">${(m.baseline*100).toFixed(1)}%</span>
+        </div>
+      </td>
+      <td class="py-3 pr-4">
+        <div class="flex items-center gap-2">
+          <div class="progress-bar flex-1" style="max-width:100px">
+            <div class="progress-fill" style="background:#4ADE80;width:${m.corrected*100}%"></div>
+          </div>
+          <span class="text-slate-300 text-xs">${(m.corrected*100).toFixed(1)}%</span>
+        </div>
+      </td>
+      <td class="py-3 pr-4"><span class="text-green-400 font-semibold">${(m.recovery*100).toFixed(1)}%</span></td>
+      <td class="py-3 pr-4 text-slate-300">${m.avg_latency.toFixed(1)}s</td>
+      <td class="py-3"><span class="badge badge-warn">${m.token_overhead}</span></td>
+    </tr>
+  `).join('');
+}
+
+function populateHeatmap(data) {
+  const table = document.getElementById('heatmap-table');
+  const models = ['claude','gpt','openweight'];
+  const horizons = ['short','medium','long'];
+  const hrs = data.horizon_failure_rates;
+  table.innerHTML = `
+    <thead><tr>
+      <th class="py-2 px-3 text-left text-xs text-slate-400">Model</th>
+      ${horizons.map(h=>`<th class="py-2 px-3 text-center text-xs text-slate-400">${h.charAt(0).toUpperCase()+h.slice(1)}</th>`).join('')}
+    </tr></thead>
+    <tbody>${models.map(m=>`
+      <tr>
+        <td class="py-2 px-3 font-medium text-white">${m.charAt(0).toUpperCase()+m.slice(1)}</td>
+        ${horizons.map(h=>{
+          const v = hrs[m]?.[h] ?? 0;
+          const bg = v > 0.6 ? '#EF4444' : v > 0.3 ? '#F59E0B' : '#22C55E';
+          return `<td class="py-2 px-3 text-center"><span class="font-bold" style="color:${bg}">${(v*100).toFixed(0)}%</span></td>`;
+        }).join('')}
+      </tr>`).join('')}
+    </tbody>`;
+}
+
+function populateFailureTypes(data) {
+  const container = document.getElementById('failure-type-list');
+  const max = Math.max(...data.failure_distribution.map(d=>d.count));
+  container.innerHTML = data.failure_distribution.map((d, i) => `
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm text-slate-300">${d.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</span>
+        <span class="text-xs font-semibold" style="color:${FAILURE_COLORS[i]}">${d.count} (${d.pct}%)</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="background:${FAILURE_COLORS[i]};width:${(d.count/max*100)}%"></div>
+      </div>
+    </div>`).join('');
+}
+
+function populateTracesTable(traces) {
+  const tbody = document.getElementById('traces-table-body');
+  const empty = document.getElementById('traces-empty');
+  if (!traces.length) { empty.style.display='block'; return; }
+  empty.style.display='none';
+  tbody.innerHTML = traces.map(t => `
+    <tr>
+      <td class="py-3 px-4 font-mono text-xs text-blue-300">${t.task_id}</td>
+      <td class="py-3 px-4 text-slate-300">${t.model}</td>
+      <td class="py-3 px-4"><span class="badge ${t.mode==='corrected'?'badge-success':'badge-warn'}">${t.mode}</span></td>
+      <td class="py-3 px-4 text-slate-400 capitalize">${t.horizon||'—'}</td>
+      <td class="py-3 px-4"><span class="badge ${t.success?'badge-success':'badge-fail'}">${t.success?'Pass':'Fail'}</span></td>
+      <td class="py-3 px-4 text-xs text-slate-400">${t.failure_type||'—'}</td>
+      <td class="py-3 px-4 text-slate-300">${t.steps_taken||0}</td>
+      <td class="py-3 px-4 text-slate-300">${(t.total_tokens||0).toLocaleString()}</td>
+      <td class="py-3 px-4 text-slate-300">${(t.total_latency_s||0).toFixed(1)}s</td>
+    </tr>`).join('');
+}
+
+// ── Stats update ──────────────────────────────────────────────────────────────
+
+function updateStats(data) {
+  const s = data.summary;
+  document.getElementById('stat-total').textContent = s.total_runs.toLocaleString();
+  document.getElementById('stat-baseline-rate').textContent = (s.baseline_success_rate*100).toFixed(1) + '%';
+  document.getElementById('bar-baseline').style.width = (s.baseline_success_rate*100) + '%';
+  document.getElementById('stat-recovery').textContent = (s.overall_recovery_rate*100).toFixed(1) + '%';
+  document.getElementById('bar-recovery').style.width = (s.overall_recovery_rate*100) + '%';
+  document.getElementById('stat-overhead').textContent = '+' + s.avg_token_overhead_pct.toFixed(1) + '%';
+
+  document.getElementById('key-recovery').textContent = (s.overall_recovery_rate*100).toFixed(1)+'%';
+  document.getElementById('key-lat-overhead').textContent = '+' + (data.overhead?.[0]?.latency_overhead??0).toFixed(1)+'s';
+  document.getElementById('key-tok-overhead').textContent = '+' + s.avg_token_overhead_pct.toFixed(1)+'%';
+
+  document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+
+function switchTab(name, btn) {
+  ['overview','failures','recovery','traces'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('hidden', t !== name);
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active');
+    b.classList.add('text-slate-400');
+  });
+  btn.classList.add('active');
+  btn.classList.remove('text-slate-400');
+}
+
+let allTraces = [];
+function filterTraces() {
+  const model   = document.getElementById('filter-model').value;
+  const horizon = document.getElementById('filter-horizon').value;
+  const success = document.getElementById('filter-success').value;
+  let filtered = allTraces;
+  if (model)   filtered = filtered.filter(t => t.model === model);
+  if (horizon) filtered = filtered.filter(t => t.horizon === horizon);
+  if (success !== '') filtered = filtered.filter(t => String(t.success) === success);
+  populateTracesTable(filtered);
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+async function refreshData() {
+  const data = await loadData();
+  updateStats(data);
+  initCharts(data);
+  populateModelTable(data);
+  populateHeatmap(data);
+  populateFailureTypes(data);
+
+  // Try to load real traces from API
+  try {
+    const r = await fetch('/api/traces');
+    if (r.ok) { allTraces = await r.json(); }
+  } catch { allTraces = []; }
+  filterTraces();
+}
+
+refreshData();
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Results (large binary/data files — use DVC or similar)
+results/raw_traces/*.json
+results/figures/*.png
+results/benchmark.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb~
+
+# Node / Trigger.dev
+node_modules/
+dist/
+.trigger/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+credentials.json
+token.json
+*.pem
+*.key
+
+# Markdown (ignore all except README)
+*.md
+!README.md
+
+# Temporary
+.tmp/
+tmp/
+*.tmp
+
+#claude
+CLAUDE/
